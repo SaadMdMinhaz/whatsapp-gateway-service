@@ -7,11 +7,14 @@ import org.slf4j.LoggerFactory;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
-import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
 
 import java.security.Principal;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Controller
@@ -62,8 +65,16 @@ public class WebSocketMessageHandler {
             Principal principal) {
         UUID userId = UUID.fromString(principal.getName());
         log.info("Call offer from user: {} in conversation: {}", userId, conversationId);
+
         messagingTemplate.convertAndSend(
                 "/topic/call.offer." + conversationId, payload);
+
+        Map<String, Object> msg = new HashMap<>();
+        msg.put("callerId", payload.callerId());
+        msg.put("sdp", payload.sdp());
+        msg.put("targetUserId", payload.targetUserId());
+        msg.put("conversationId", conversationId.toString());
+        sendToUserTopic(payload.targetUserId(), msg);
     }
 
     @MessageMapping("/call.answer.{conversationId}")
@@ -73,8 +84,16 @@ public class WebSocketMessageHandler {
             Principal principal) {
         UUID userId = UUID.fromString(principal.getName());
         log.info("Call answer from user: {} in conversation: {}", userId, conversationId);
+
         messagingTemplate.convertAndSend(
                 "/topic/call.answer." + conversationId, payload);
+
+        Map<String, Object> msg = new HashMap<>();
+        msg.put("calleeId", payload.calleeId());
+        msg.put("sdp", payload.sdp());
+        msg.put("targetUserId", payload.targetUserId());
+        msg.put("conversationId", conversationId.toString());
+        sendToUserTopic(payload.targetUserId(), msg);
     }
 
     @MessageMapping("/call.iceCandidate.{conversationId}")
@@ -84,8 +103,18 @@ public class WebSocketMessageHandler {
             Principal principal) {
         UUID userId = UUID.fromString(principal.getName());
         log.debug("ICE candidate from user: {} in conversation: {}", userId, conversationId);
+
         messagingTemplate.convertAndSend(
                 "/topic/call.iceCandidate." + conversationId, payload);
+
+        Map<String, Object> msg = new HashMap<>();
+        msg.put("senderId", payload.senderId());
+        msg.put("candidate", payload.candidate());
+        msg.put("sdpMid", payload.sdpMid());
+        msg.put("sdpMLineIndex", payload.sdpMLineIndex());
+        msg.put("targetUserId", payload.targetUserId());
+        msg.put("conversationId", conversationId.toString());
+        sendToUserTopic(payload.targetUserId(), msg);
     }
 
     @MessageMapping("/call.end.{conversationId}")
@@ -95,8 +124,55 @@ public class WebSocketMessageHandler {
             Principal principal) {
         UUID userId = UUID.fromString(principal.getName());
         log.info("Call ended by user: {} in conversation: {}", userId, conversationId);
+
         messagingTemplate.convertAndSend(
                 "/topic/call.end." + conversationId, payload);
+
+        Map<String, Object> msg = new HashMap<>();
+        msg.put("userId", payload.userId());
+        msg.put("targetUserId", payload.targetUserId());
+        msg.put("conversationId", conversationId.toString());
+        sendToUserTopic(payload.targetUserId(), msg);
+    }
+
+    @MessageMapping("/group.call.join.{conversationId}")
+    public void handleGroupJoin(
+            @DestinationVariable UUID conversationId,
+            @Payload GroupJoinMessage payload,
+            Principal principal) {
+        UUID userId = UUID.fromString(principal.getName());
+        log.info("Group join from user: {} in conversation: {}", userId, conversationId);
+
+        Map<String, Object> msg = new HashMap<>();
+        msg.put("kind", "group.join");
+        msg.put("userId", payload.userId());
+        msg.put("userName", payload.userName());
+        msg.put("conversationId", conversationId.toString());
+        msg.put("callKind", payload.callKind());
+
+        List<String> targets = payload.existingParticipantIds();
+        if (targets == null) targets = new ArrayList<>();
+        if (!targets.contains(payload.targetUserId())) {
+            targets.add(payload.targetUserId());
+        }
+
+        for (String targetId : targets) {
+            if (targetId != null && !targetId.isEmpty() && !targetId.equals(payload.userId())) {
+                sendToUserTopic(targetId, msg);
+            }
+        }
+    }
+
+    private void sendToUserTopic(String targetUserId, Object payload) {
+        if (targetUserId != null && !targetUserId.isEmpty()) {
+            try {
+                UUID targetUuid = UUID.fromString(targetUserId);
+                messagingTemplate.convertAndSendToUser(
+                        targetUuid.toString(), "/queue/calls", payload);
+            } catch (IllegalArgumentException e) {
+                log.warn("Invalid targetUserId: {}", targetUserId);
+            }
+        }
     }
 
     public void deliverMessageToUser(UUID recipientId, Object message) {
@@ -126,15 +202,18 @@ public class WebSocketMessageHandler {
     public record PresenceMessage(UUID userId, boolean online) {
     }
 
-    public record CallOfferMessage(String callerId, String sdp) {
+    public record CallOfferMessage(String callerId, String sdp, String targetUserId) {
     }
 
-    public record CallAnswerMessage(String calleeId, String sdp) {
+    public record CallAnswerMessage(String calleeId, String sdp, String targetUserId) {
     }
 
-    public record IceCandidateMessage(String senderId, String candidate, String sdpMid, int sdpMLineIndex) {
+    public record IceCandidateMessage(String senderId, String candidate, String sdpMid, int sdpMLineIndex, String targetUserId) {
     }
 
-    public record CallEndMessage(String userId) {
+    public record CallEndMessage(String userId, String targetUserId) {
+    }
+
+    public record GroupJoinMessage(String userId, String userName, String targetUserId, String callKind, List<String> existingParticipantIds) {
     }
 }

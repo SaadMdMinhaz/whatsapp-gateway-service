@@ -1,0 +1,35 @@
+# ===== Maven =====
+target/
+build/
+
+# ===== Eclipse / STS =====
+.classpath
+.project
+.settings/
+.factorypath
+bin/
+
+# ===== IntelliJ =====
+.idea/
+*.iml
+
+# ===== VS Code =====
+.vscode/
+
+# ===== Logs =====
+*.log
+logs/
+
+# ===== Compiled files =====
+*.class
+
+# ===== Packaging =====
+*.war
+*.ear
+
+# ===== OS files =====
+.DS_Store
+Thumbs.db
+
+# ===== Dump files =====
+*.hprof
