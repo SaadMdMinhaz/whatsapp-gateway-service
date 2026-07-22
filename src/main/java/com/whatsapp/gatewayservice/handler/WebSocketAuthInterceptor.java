@@ -54,12 +54,12 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
                 accessor.setUser(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
                         userId.toString(), null, java.util.Collections.emptyList()));
 
-                sessionManager.addSession(userId, sessionId);
+                try { sessionManager.addSession(userId, sessionId); } catch (Exception e) { log.warn("Redis session add failed: {}", e.getMessage()); }
 
                 log.info("WebSocket connected: user={}, session={}", userId, sessionId);
             } else if (StompCommand.DISCONNECT.equals(accessor.getCommand())) {
                 String sessionId = accessor.getSessionId();
-                sessionManager.removeSession(sessionId);
+                try { sessionManager.removeSession(sessionId); } catch (Exception e) { log.warn("Redis session remove failed: {}", e.getMessage()); }
                 log.info("WebSocket disconnected: session={}", sessionId);
             } else if (StompCommand.SEND.equals(accessor.getCommand())) {
                 String token = extractToken(accessor);
